@@ -1,4 +1,4 @@
-﻿# AI Workspace
+# AI Workspace
 
 Production AI engineering environment for real estate, marketing, and business automation.
 

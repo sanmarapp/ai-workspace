@@ -1,5 +1,5 @@
-﻿# Git Sync Script
-cd C:\AIWorkspace
+# Git Sync Script
+cd D:\\AIWorkspace
 
 Write-Host "Syncing workspace..." -ForegroundColor Cyan
 
@@ -13,7 +13,7 @@ if ($changes) {
     git add .
     git commit -m "Auto-sync: $timestamp"
     git push
-    Write-Host "✅ Changes pushed" -ForegroundColor Green
+    Write-Host "? Changes pushed" -ForegroundColor Green
 } else {
-    Write-Host "✅ No changes to sync" -ForegroundColor Green
+    Write-Host "? No changes to sync" -ForegroundColor Green
 }
