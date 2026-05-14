@@ -1,0 +1,22 @@
+﻿# Secrets
+secrets/
+*.env
+.env.*
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/

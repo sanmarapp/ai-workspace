@@ -1,0 +1,46 @@
+﻿# Setup Guide
+
+## Installation Complete
+- Git configured
+- SSH key added to GitHub (sanmarapp)
+- Workspace structure created
+- MCP servers ready
+
+## Next Steps
+1. Install MCP filesystem server
+2. Configure Claude Deskt
+npm install -g @modelcontextprotocol/server-filesystem
+
+Write-Host "
+✅ MCP filesystem server installed" -ForegroundColor Green
+npm list -g --depth=0 | Select-String "filesystem"
+# Claude config path
+ = "C:\Users\rossy.ROSSYMKT\AppData\Roaming\Claude\claude_desktop_config.json"
+ = "C:\Users\rossy.ROSSYMKT\AppData\Roaming\Claude"
+
+# Create directory if needed
+if (-not (Test-Path )) {
+    New-Item -ItemType Directory -Path  -Force
+}
+
+# Backup existing config
+if (Test-Path ) {
+     = "claude_backup_20260514_135715.json"
+    Copy-Item  "C:\AIWorkspace\config\"
+    Write-Host "✅ Backed up existing config" -ForegroundColor Green
+}
+
+# Create MCP configuration
+@"
+{
+  "mcpServers": {
+    "workspace-filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:\\AIWorkspace\\projects"
+      ]
+    }
+  }
+}
