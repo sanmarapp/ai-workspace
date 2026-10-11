@@ -198,11 +198,50 @@ Test-infrastructure change: the SAF integration guard (pinned to `127.0.0.1:5543
 
 **Human visual sign-off: PENDING OWNER/HUMAN SIGN-OFF.** Required screens, desktop and mobile: Dashboard, Work Queue, Verification, Final Decision, Inventory, SAF Detail, S18 Edit, Money Receipt. Not self-approved.
 
-**Observations (not fixed):** (a) the receipt-number reservation vs issued-number difference recorded in §2C was **reproduced on real Redis**: a reserved `…0003` became `…0004` at issue because issue recomputes from a DB count and writes it back; the `@unique` constraint held and no duplicate receipt exists (same code as production `eb9e481`). (b) The RC Postgres/Redis TCP proxies used for bootstrap and inspection were **removed** afterwards; no public database endpoint remains.
+**Observations (not fixed):** (a) the receipt-number reservation vs issued-number difference recorded in §2C was **reproduced on real Redis**: a reserved `…0003` became `…0004` at issue because issue recomputes from a DB count and writes it back; the `@unique` constraint held and no duplicate receipt exists (same code as production `eb9e481`). **RESOLVED in the RC by the §2E fix (`12d8a7d`); production `eb9e481` still has the old behaviour until the fix ships.** (b) The RC Postgres/Redis TCP proxies used for bootstrap and inspection were **removed** afterwards; no public database endpoint remains.
 
 **Resources created that should later be deleted (they incur Railway cost):** environment `sales-v1-rc` and everything in it — services `sanmar-sales-api-rc`, `Postgres-7RHD`, `Redis-kp3e` and their volumes; branches `rc/v1-backend-7d5b22a`, `rc/v1-frontend-48c6c4f` (keep until the PR gate is closed); any Vercel branch env var added by the owner. Local-only scratch (scripts, synthetic-credential file, local build) is outside every repository.
 
 **Remaining before the PR gate:** R2 bucket + credentials and the R2 smoke; the Vercel branch variable, preview build, exact-origin CORS and a re-run of the first-request proof on the real preview; human sign-off; owner decision on observation (a).
+
+## 2E. Receipt-number RC fix gate — RECEIPT RC FIX: PASS
+
+**Owner decision:** the §2C/§2D receipt-number mismatch is a **V1 blocker**. Approved invariant: *if a receipt number has been generated/reserved for a SAF, issuing the receipt must reuse that exact number; issuance must never silently replace a number already presented.* The fix is **accepted as RECEIPT RC FIX: PASS**. Nothing was merged, no PR was opened, production and staging were not touched.
+
+| Item | Value |
+|---|---|
+| **Corrected backend RC** | `12d8a7d081ac24a231dd4820517cc06a9f25249b` on branch `v1/rc-fix-receipt-number-consistency` (worktree `cowork-af\backend-v1-day3`), built on the original Day-3 backend RC `7d5b22a0c0c21d49353640232f1d4fbed0e80654` |
+| Commits | `cb6e841` fix (`fix(saf): one canonical money receipt number; issue reuses the reserved number`) + `12d8a7d` test-only (`test(saf): reserved-but-unissued receipt numbers are never allocated again`). **No schema or migration change.** |
+| Preservation | `preservation/v1-rc-receipt-number-fix-12d8a7d` → `12d8a7d081ac24a231dd4820517cc06a9f25249b` (live remote verified) |
+| Deployment ref | `rc/v1-backend-12d8a7d` → `12d8a7d081ac24a231dd4820517cc06a9f25249b` (live remote verified). `rc/v1-backend-7d5b22a` and `preservation/v1-rc-backend-7d5b22a` were **not moved**: both the original and the corrected RC stay on record. |
+| Railway | environment `sales-v1-rc`, service `sanmar-sales-api-rc`, deployment `fac1b784-dac5-45ef-a017-0de7f518611e` (SUCCESS, deployed commit exactly `12d8a7d…`; build ok; pre-deploy "31 migrations found… No pending migrations to apply"; health 200; 1/1 running, 0 crashed; real RC Redis and Postgres connected; BullMQ workers attached). The RC database was **not** re-baselined. |
+
+**Root cause.** `generateReceiptNumber` reserved a number from the Redis sequence and stored it on `SalesApprovalForm.receipt_number`, but `issueReceipt` ignored it and recomputed `COUNT(non-deleted receipts) + 1` from the database, then overwrote the form's number. Two independent generators, so a presented number could be replaced at issue. Related defects removed: the count excluded soft-deleted receipts while the unique constraint did not; racing issues surfaced raw unique-violation 500s; two concurrent generates on one SAF could present a number that was then replaced.
+
+**Fix (one canonical allocation path, Redis sequence kept).** `reserveReceiptNumber` reuses the number already on the SAF, otherwise draws one from the Redis sequence and claims it atomically (`UPDATE … WHERE receipt_number IS NULL`); `allocateReceiptNumber` skips any number already present on a `MoneyReceipt` (including soft-deleted) **or on any SAF's `receipt_number`** (reserved-but-unissued) and fast-forwards a lagging/lost counter via the new atomic `RedisService.raiseCounterTo()`; `issueReceipt` no longer generates or rewrites a number, and a unique violation maps to 400 "already issued" (if the SAF already has a receipt) or a clear 409. `MoneyReceipt.receipt_number` / `form_id` uniqueness remains the final guard. A lost claim race leaves a harmless one-number gap. The unused `MoneyReceiptSequence` table and the dead `SafFormNumberService.generateReceiptNumber` (`SPL-MR-…`, no callers) were **not** touched.
+
+**Test evidence (local, before deploy).** New unit spec 18 (stateful fakes with real interleaving) · new real-PostgreSQL 17.10 integration spec 10 (12-way concurrency on one SAF, 10 SAFs in parallel, counter reset, soft-deleted numbers, reserved-only numbers) · existing Money Receipt authority spec 57 (only gained two mock primitives; no assertion changed) · full non-DB suite 400 passed (386 + 14 at `cb6e841`) · the four existing DB suites 46 (SAF 4, project-content 16, inventory-phase2 16, admin-audit 10) · `tsc --noEmit`, `nest build`, `prisma validate` clean. **Mutation-checked:** with the reservation lookup removed, 3 new unit tests and all 3 new DB tests fail; restored, all pass.
+
+**Live RC validation — 35/35 checks passed** (real RC Redis 8.2.9 + RC Postgres 18.6; test-only SAFs; evidence file kept outside every repository, no secrets):
+- **Generate → Issue preserves the exact reserved number** (`…0006` generated, `…0006` issued; form and receipt both carry it).
+- **Repeated generate consumes no additional sequence** (counter 5 → 6 → 6; same number returned).
+- **Direct issue allocates once** (`…0007`, counter 6 → 7); a retried issue returns 400 and allocates nothing.
+- **Historical issued numbers are skipped:** the RC held `0001`–`0004` (`0004` issued by the old DB-count rule) with the Redis counter at 3; the new allocator skipped `0004` and gave `…0005`.
+- **Reserved-but-unissued SAF numbers are skipped:** SAF R1 reserved `…0009` unissued; with the counter set exactly one behind it, SAF R2 skipped it (`…0010`); after a full counter reset to 0, SAF R3 still got an unused number (`…0011`); R1 kept `0009`.
+- **API restart preserves the reservation through PostgreSQL:** after restarting only the RC API (fresh process confirmed in logs), `0009` was still on R1; issuing it returned exactly `…0009` and consumed no sequence value; a new SAF got an unused `…0013`.
+- **Redis restart preserves the sequence through the RC-only volume:** after restarting only the RC Redis (RC-only service and volume; nothing outside `sales-v1-rc` affected), Redis was back healthy within ~10 s, still 8.2.9, counter 13 retained.
+- **Allocator stays safe with the counter artificially behind:** counter forced to 1 after the Redis restart, a new SAF got an unused `…0014` and the counter moved forward; 14 numbers across 14 SAFs, no duplicates; every issued receipt equals its SAF's reserved number.
+- **CSD authority and the allowed-state contract are unchanged:** CSD generates/issues; SS and ADMIN are refused (403) on both issue and generate, allocating nothing; new receipt actions work only in SUBMITTED / VERIFIED / APPROVED, and DRAFT, CUSTOMER_SIGNED and CANCELLED return 400 on generate and issue and consume no number (the other four states are covered by the unit spec).
+- Logs: only intended 4 × 403 and 7 × 400, the known no-R2 `saf-document` retries and the brief Redis-restart reconnect errors; no 5xx.
+- **Production / staging untouched:** production's latest sales-api deployment is still `d094c4e3` (`eb9e481`); staging's is still `392fc7cc` (`788faff`). Only the RC API service's source was changed (staged, RC environment only); the temporary RC Redis TCP proxy was removed afterwards.
+
+**Safety note (production Railway access).** During this gate a single `railway run -e production` command was used **only to print the environment name**; it did not connect to or query any database or Redis and modified nothing. **Do not use `railway run -e production` again during RC work.** Production and staging inspection must remain **read-only** (describe/list tools only); any RC data or Redis manipulation must go through a helper that refuses to run unless the environment is `sales-v1-rc`.
+
+**Still outstanding (unchanged by this gate):**
+- **R2 is still not configured in the RC** (needs a dedicated non-production bucket + bucket-scoped token set on `sanmar-sales-api-rc`; R2 smoke not run).
+- **Vercel RC frontend pairing is still pending** (branch-scoped `VITE_API_URL` for `rc/v1-frontend-48c6c4f`, preview build, exact-origin CORS, first-request proof on the real preview).
+- **Human visual sign-off is still PENDING OWNER/HUMAN SIGN-OFF.**
+- **No PRs opened; nothing merged; no production deployment.** The production backend still runs `eb9e481` with the old receipt-number behaviour; the corrected backend `12d8a7d` ships only through the release gates (it supersedes `7d5b22a` as the backend RC; the frontend RC `48c6c4f` is unchanged).
 
 ## 3. Working repositories and worktrees
 
@@ -243,6 +282,8 @@ All pushes were new branches. No merge, force, PR, checkout, or stash applied.
 | **Day 3 frontend RC** | `48c6c4fa630a44c78027b59329c68c83c507883c` | `preservation/v1-rc-frontend-48c6c4f` | pushed, live remote verified |
 | **Day 4 backend RC deploy ref** (deployment-oriented, *not* a preservation ref) | `7d5b22a0c0c21d49353640232f1d4fbed0e80654` | `rc/v1-backend-7d5b22a` | pushed, live remote verified; Railway `sales-v1-rc` is pinned to this commit |
 | **Day 4 frontend RC deploy ref** (deployment-oriented, *not* a preservation ref) | `48c6c4fa630a44c78027b59329c68c83c507883c` | `rc/v1-frontend-48c6c4f` | pushed, live remote verified; intended branch for the RC Vercel preview |
+| **Corrected backend RC (receipt-number fix)** | `12d8a7d081ac24a231dd4820517cc06a9f25249b` | `preservation/v1-rc-receipt-number-fix-12d8a7d` | pushed, live remote verified (§2E). Original `preservation/v1-rc-backend-7d5b22a` untouched. |
+| **Corrected backend RC deploy ref** (deployment-oriented, *not* a preservation ref) | `12d8a7d081ac24a231dd4820517cc06a9f25249b` | `rc/v1-backend-12d8a7d` | pushed, live remote verified; Railway `sales-v1-rc` / `sanmar-sales-api-rc` is pinned to this commit. `rc/v1-backend-7d5b22a` was not moved. |
 | Backend `work/application-form` | `64a80eee9ac35fd5cffd37787beb592931eb2048` | `work/application-form` | already on remote **[USER 10-11]** and seen in `ls-remote`. |
 | **Phase 0B** detached `cowork-af/frontend` | `3ea9264cad7593825714798dd051187d8a1d92a6` | `preservation/frontend-saf-functional-parity-3ea9264` | pushed (not on any live remote ref before) |
 | **Phase 0B** `feature/block-b1-booking-approval-overview` | `c016f0756b1d3dcaa2240ec80c2424d0c1cdd7e3` | none needed | already in remote `main` |
@@ -371,6 +412,8 @@ Consolidation conclusions **[AUDIT 27-Sep]**: backend core on production `main` 
 - Do not repoint production or existing staging to the RC; the RC lives only in Railway environment `sales-v1-rc` (§2D).
 - The RC database baseline is an **RC bootstrap exception**, not the permanent migration-history remediation; do not apply it to production or staging, and do not mark it as fixing the chain.
 - Never reuse production R2 credentials or the production bucket for RC testing; never copy production secrets into `sales-v1-rc`.
+- Do not amend, squash, rebase or merge the tested receipt-number fix commits (`cb6e841`, `12d8a7d`) without an explicit decision; do not move `rc/v1-backend-7d5b22a` or `rc/v1-backend-12d8a7d`. The corrected backend RC is `12d8a7d` (§2E); do not ship `7d5b22a` or the old DB-count receipt numbering.
+- **Do not use `railway run -e production` (or any production/staging command that resolves their variables) during RC work.** Production and staging inspection stays read-only (describe/list); any RC data or Redis manipulation goes through a helper that refuses to run unless the environment is `sales-v1-rc` (§2E safety note).
 
 ## 11. V1 / Phase 1 scope
 
@@ -388,3 +431,4 @@ Governed by the approved 3-day V1 completion strategy **[USER 10-11]** (text not
 - Next: the owner decides the merge/PR and release path, then the "before production" list in §2C (CI on PRs, real Redis + R2 staging smoke, human visual sign-off, production DB checks, backend-first deploy of both heads together).
 - Still held / outside the RC: `7447040`, DP-escalation panel, AF backend recovery and migrations. Phase 2: Lead Management, Sales Presentation. Legacy `SafFormEditPage.tsx` stays unrouted through Day 3.
 - **Day 4 (§2D): RC STAGING PARTIAL.** Isolated Railway environment `sales-v1-rc` is live on backend RC `7d5b22a` (own Postgres 18.6, Redis 8.2.9; real-Redis smoke green; core 63/63). Outstanding manual items: dedicated R2 bucket + credentials (R2 untested), Vercel branch-scoped `VITE_API_URL` + preview build + exact-origin CORS, human visual sign-off (**PENDING OWNER/HUMAN SIGN-OFF**). No PR opened, nothing merged, production and staging untouched. PRs only after those are green.
+- **Receipt-number fix gate (§2E): RECEIPT RC FIX: PASS.** Corrected backend RC is **`12d8a7d081ac24a231dd4820517cc06a9f25249b`** (preservation `preservation/v1-rc-receipt-number-fix-12d8a7d`, deploy ref `rc/v1-backend-12d8a7d`), deployed to `sales-v1-rc` / `sanmar-sales-api-rc` as deployment `fac1b784-dac5-45ef-a017-0de7f518611e`; 35/35 live checks passed; no schema or migration change. It supersedes `7d5b22a` as the backend RC; frontend RC `48c6c4f` is unchanged. Still pending: R2 (not configured in the RC), Vercel RC frontend pairing, human visual sign-off. No PRs, no merge, no production deployment.
