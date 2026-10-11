@@ -1,6 +1,6 @@
 # PROJECT STATUS — SANMAR SALES APP (canonical continuation entry point)
 
-Created 2026-10-11, revised 2026-10-11 (Phase 0B). Day 1 source-code consolidation has **not** started.
+Created 2026-10-11, revised 2026-10-11 (Day 1 closeout). **Day 1: ENGINEERING PASS** (see §2A). Day 2 has not started.
 
 ## 0. Reading rules
 
@@ -41,13 +41,55 @@ Stale local `main` refs (frontend clone `51e5dc3`, old backend clone `42cee9d`).
 
 **27 Sep audit snapshot (superseded, do not treat as current):** AF HEAD `86207e4`; frontend work HEAD `12503c6`. **[AUDIT 27-Sep]**
 
+## 2A. Day 1 checkpoint — ENGINEERING PASS
+
+**Day 1: ENGINEERING PASS. V1 is NOT production-ready** (two acceptance items below are pending).
+
+| Item | Value |
+|---|---|
+| Consolidated frontend branch | `v1/day1-saf-consolidation` @ `cd11282b5ba4d2b6e9b22241fcff993086293d17` (local worktree `cowork-af\frontend-v1`; 15 commits on `origin/main` `c9d3a2f`; 62 files, +9,283 / -2,960) |
+| Remote preservation | `preservation/v1-day1-saf-consolidation-cd11282` → `cd11282b5ba4d2b6e9b22241fcff993086293d17` (verified on the live remote). **Preserved, not merged, not deployed, no PR.** |
+| Final verification **[VERIFIED]** | `tsc -b` clean · production build pass · oxlint 0 warnings · **206/206** tests (baseline `main` was 108) · mocked-API browser functional QA pass |
+
+**Outcome by stage**
+
+| Stage | Result |
+|---|---|
+| 1A Inventory | `019291c`, `5971b14`, `12503c6` ported (relational UnitType, P3B document types; Unit Matrix / Present Unit kept dormant). Production backend supports `BROCHURE` / `FLOOR_PLAN` / `OTHER`. |
+| 1B SAF functional parity | Ported selectively from `3ea9264` (never merged): shared role/status contract, flexible payment schedule, governed document/archive UI, executed uploads, Return / Cancel Booking / Mark No Sale, DP revision/waiver and submission evidence, **S18 as the routed SAF Edit**, route guards, create-from-unit, ≥20-character promo gate (production requires it; main checked 5), shared Final Decision (GMC + Director Sales, `final-decision`, lost-race refresh, non-final Defer). |
+| 1C R1 visual continuation | All 7 R1 commits (`70ee312..8d0d493`) replayed; functional behaviour from 1B won in the overlap files. |
+
+**Canonical decisions now in effect on the Day 1 branch (not on `main`)**
+
+- **S18 (`SafFormEditS18Page`) is the canonical, routed SAF Edit.** Legacy `SafFormEditPage.tsx` (with `SalesApprovalFormPage`, `SafFormListPage`) stays in the tree **unrouted through Day 3**, as the regression reference. The legacy client-side `jsPDF/html2canvas` export is **not** reproduced; documents come from the governed archive.
+- **R1 is canonical for Dashboard, Work Queue, Verification, Final Decision and Inventory.**
+- **`7af8113` (old DS-v2 preview) remains `PRESERVED / REFERENCE` only.** Nothing from it ships (no preview API bridge, no `vercel.json` change; enforced by `scripts/no-preview-code.test.mjs`).
+- Guard tests added: S18-vs-legacy field coverage, frontend ↔ production backend route map and role matrix (fixture from backend `eb9e481`), no-preview gate, create-flow, `saf-parity`.
+
+**Held — not part of Day 1**
+
+| Item | Held because |
+|---|---|
+| Backend `044069af2227ea0910b020b8ce7f32a68a91c6bb` **+** frontend `290fb5f` | **Next V1 Money Receipt authority dependency.** Production still lets SS/CSD/ADMIN issue receipts and creates a provisional receipt on customer signing. The pair lands together; a test blocks `290fb5f` from landing alone. |
+| `7447040` (AF Completion checkbox in User Management) | Held for AF backend availability. `can_complete_application_forms` is not in production `UpdateUserDto`; production runs `forbidNonWhitelisted`, so every user edit would return 400. |
+| DP-escalation panel (`af225f6`) | Held. Production has no `GET /:id/dp-escalation`; DP escalation is intentionally inactive. |
+| Lead Management · Sales Presentation | **PHASE 2 / DEFERRED — DO NOT TOUCH DURING V1 CONSOLIDATION.** |
+
+**Remaining acceptance items — blockers to calling V1 production-ready (not reasons to undo Day 1)**
+
+1. **R1 visual sign-off: PENDING.** DOM/functional browser QA was completed, but screenshots / rendered visual sign-off were not available (the browser pane would not draw).
+2. **Real-backend role/flow QA: PENDING.** Day 1 browser QA used a **mocked API only**.
+
+Day 1 tested history must not be amended, squashed, rebased or merged without an explicit decision.
+
 ## 3. Working repositories and worktrees
 
 | Role | Path | Branch @ HEAD | State **[VERIFIED 10-11]** |
 |---|---|---|---|
 | Backend (active AF) | `authority-h10\sanmar-sales-backend` | `recovery/application-form-foundation-v1` @ `2f955e4` | Clean. `.gp-verify-output/` untracked by design. |
 | Frontend (AF line) | `authority-h10\sanmar-sales-frontend` | `work/application-form` @ `0d03811a54138c1ee9364e5e0423ce933e53d25b` | Uncommitted `D public/sanmar-s.png` (unresolved, do not commit or restore without a decision). |
-| Frontend (current working) | `frontend\` | `feature/saf-inventory-transaction-foundation-v2` @ `af225f6` | Clean. 2 stashes (§4). `cowork-af/CLAUDE.md` marks it "do not touch"; Phase 0/0B only created branches. |
+| **Frontend (Day 1 consolidated, canonical V1 line)** | `cowork-af\frontend-v1` | `v1/day1-saf-consolidation` @ `cd11282b5ba4d2b6e9b22241fcff993086293d17` | Clean. Local branch, preserved remotely (§2A). `node_modules` is a junction to `frontend\node_modules`. |
+| Frontend (previous working checkout) | `frontend\` | `feature/saf-inventory-transaction-foundation-v2` @ `af225f6` | Clean. 2 stashes (§4). `cowork-af/CLAUDE.md` marks it "do not touch"; Phase 0/0B only created branches. |
 | Frontend (DS-v2 preview, separate clone) | `cowork-af\frontend-dsv2-preview` | `feature/dsv2-r1-operational-ui` @ `8d0d493` | Clean. |
 | cowork-af frontend worktree | `cowork-af\frontend` | detached @ `3ea9264` | Preserved in Phase 0B (§4). |
 | cowork-af backend worktree | `cowork-af\backend` | `ops/h1-health-endpoint` @ `9e190c4` | Tip preserved at `preservation/backend-ops-h1-health-endpoint-9e190c4` (§4). |
@@ -68,6 +110,7 @@ All pushes were new branches. No merge, force, PR, checkout, or stash applied.
 | `stash@{0}` pre-P4D-A1-unrelated-local-changes | `692b0f43dd10c604f62f36171ce6d4101e4767d1` | `preservation/stash-pre-p4d-a1-692b0f4` | pushed. Stash still present, not applied. |
 | `stash@{1}` temp responsive validation work | `7d84fc6a1bd0895002e1fb93fec543d211a67005` | `preservation/stash-responsive-validation-7d84fc6` | pushed. Stash still present, not applied. |
 | AF recovery checkpoint (backend) | `2f955e4913a4ebfe9b6ec726d30f86e712f4cebd` | `preservation/af-recovery-20261011` | pushed |
+| **Day 1 consolidated frontend** | `cd11282b5ba4d2b6e9b22241fcff993086293d17` | `preservation/v1-day1-saf-consolidation-cd11282` | pushed, live remote verified |
 | Backend `work/application-form` | `64a80eee9ac35fd5cffd37787beb592931eb2048` | `work/application-form` | already on remote **[USER 10-11]** and seen in `ls-remote`. |
 | **Phase 0B** detached `cowork-af/frontend` | `3ea9264cad7593825714798dd051187d8a1d92a6` | `preservation/frontend-saf-functional-parity-3ea9264` | pushed (not on any live remote ref before) |
 | **Phase 0B** `feature/block-b1-booking-approval-overview` | `c016f0756b1d3dcaa2240ec80c2424d0c1cdd7e3` | none needed | already in remote `main` |
@@ -93,7 +136,7 @@ Unresolved pre-existing local state (not committed, not deleted): `public/sanmar
 | `hotfix/gmc-total-unit-value` | `788faffd8335fac70a4dd5b0737e3ecd323efeef` | `preservation/backend-hotfix-gmc-total-unit-value-788faff` |
 | `hotfix/user-select-project-content-capability` | `9afffaacc967f3c325adbdebc82297098c45abb9` | `preservation/backend-hotfix-user-select-project-content-capability-9afffaa` |
 | `inv2/phase2-foundation` | `08c7504b76ec8bcbb3e219422bb767c6bd3de3de` | `preservation/backend-inv2-phase2-foundation-08c7504` |
-| `ops/h1-health-endpoint` (also checked out in `cowork-afackend`) | `9e190c4755b25ac6235e185b061c407eb24d0bda` | `preservation/backend-ops-h1-health-endpoint-9e190c4` |
+| `ops/h1-health-endpoint` (also checked out in `cowork-af\backend`) | `9e190c4755b25ac6235e185b061c407eb24d0bda` | `preservation/backend-ops-h1-health-endpoint-9e190c4` |
 | `release/inv2-backend-foundation` | `1fb3d3684e5ee51d9cf1bb64b7206ffcca23a070` | `preservation/backend-release-inv2-backend-foundation-1fb3d36` |
 | `release/inv2-schema-foundation` | `4069fd83f904dc7986c245d09e59a33419dd7d01` | `preservation/backend-release-inv2-schema-foundation-4069fd8` |
 | `release/project-content-phase-1-clean` | `bc35cd6ab570057460ad34e284195aa4274b846d` | `preservation/backend-release-project-content-phase-1-clean-bc35cd6` |
@@ -109,14 +152,14 @@ All rows below are **[AUDIT 27-Sep] — not re-tested today** unless marked othe
 |---|---|---|
 | Auth / Login | COMPLETE ON MAIN | |
 | Global shell / navigation | COMPLETE ON MAIN | DS-v2 R0. R1 refinement `IMPLEMENTED / UNMERGED`. |
-| Work Queue / Booking & Approval | PARTIAL | Functional on main; DS-v2 skin unmerged. |
-| Verification Queue | PARTIAL | Functional on main; DS-v2 skin unmerged. |
-| GMC / Final Approval | PARTIAL | Functional on main; DS-v2 skin unmerged. |
+| Work Queue / Booking & Approval | PARTIAL → **IMPLEMENTED / UNMERGED (Day 1)** | R1 skin on the Day 1 branch with create-from-unit; not on `main`. Visual sign-off pending (§2A). |
+| Verification Queue | PARTIAL → **IMPLEMENTED / UNMERGED (Day 1)** | R1 skin + ≥20-char promo gate on the Day 1 branch. |
+| GMC / Final Approval | PARTIAL → **IMPLEMENTED / UNMERGED (Day 1)** | R1 skin + shared GMC/Director Sales Final Decision on the Day 1 branch. |
 | SAF Detail | PARTIAL | A materially more advanced dormant candidate exists on `feature/saf-functional-parity-v1` (see `preservation/frontend-saf-functional-parity-3ea9264` for the cowork-af baseline commit `3ea9264`). |
-| **SAF Edit** | **PARTIAL / FRAGMENTED, highest-risk consolidation area** | Three divergent implementations. Reconcile before choosing a canonical one. |
+| **SAF Edit** | **IMPLEMENTED / UNMERGED (Day 1)** — was PARTIAL / FRAGMENTED | **S18 is canonical and routed on the Day 1 branch.** Legacy editor unrouted through Day 3. Not on `main`. |
 | SAF print / customer document | PARTIAL | Base on main; enhanced dormant variant `IMPLEMENTED / UNMERGED`. |
 | Provisional Money Receipt | COMPLETE ON MAIN | Base only. Additional unmerged work exists elsewhere (e.g. `c0dc770` on `work/application-form`). |
-| Inventory | PARTIAL | Functional on main; **two independent DS-v2 skins** exist. |
+| Inventory | PARTIAL → **IMPLEMENTED / UNMERGED (Day 1)** | R1 is the canonical skin; `7af8113` is reference-only. |
 | Project Detail / Unit Detail | COMPLETE ON MAIN | Delta against the DS-v2 branch not fully reconciled. |
 | UnitType / Floor Navigator / Unit Matrix / Present Unit | COMPLETE ON MAIN | DS-v2 skin not done. |
 | Project content / media | COMPLETE ON MAIN | |
@@ -163,14 +206,15 @@ Consolidation conclusions **[AUDIT 27-Sep]**: backend core on production `main` 
 
 ## 8. Known conflicts requiring consolidation
 
-1. **SAF Edit** — three divergent implementations (§5). Highest risk. Reconcile before choosing one.
-2. **DS-v2 R1** — two independent lineages (including `feature/dsv2-r1-operational-ui` @ `8d0d493`, now preserved). Reconcile; do not create a third.
+1. **SAF Edit** — **RESOLVED on the Day 1 branch (unmerged):** S18 canonical (§2A).
+2. **DS-v2 R1** — **RESOLVED on the Day 1 branch (unmerged):** R1 canonical, `7af8113` reference-only (§2A). Do not create a third lineage.
 3. **Conflicting design-system documents** — `01-PLANS/design-system/SANMAR-SALES-DESIGN-SYSTEM-V2.md` vs `_design_handoff_audit/06_FIGMA_DESIGN_SYSTEM_BLUEPRINT.md` vs `06_FIGMA_DESIGN_PREPARATION_PACKAGE.md`. No document is declared authoritative here; needs a ruling.
 4. **AF page-model and Clause 7** — §6.
 
 ## 9. Test and deployment evidence
 
 - Phase 0/0B: no deploy, no database access, no migration, no stash applied, no merge.
+- Day 1 **[VERIFIED]**: `tsc -b` clean, build pass, oxlint 0 warnings, 206/206 tests at `cd11282`. Browser QA was DOM/functional against a **mocked API**; no screenshots; no real-backend role QA (§2A).
 - AF-FE-R2 verification: §2 **[USER 10-11]**.
 - Earlier evidence **[DOC]**: `01_TEST_REPORT.md` (21 Sep); CI run `35544085600` on `7cbc8ab` ran `saf.service.integration.spec.ts` 4/4; `02_MIGRATION_REHEARSAL_REPORT.md` is **synthetic** only; `07_STAGING_DEPLOY_AND_ROLLBACK_PLAN.md` is for a later gate.
 - SAF live R2 archive proof **[DOC: CURRENT-STATE.md]**, 30 Aug, not re-verified.
@@ -185,11 +229,13 @@ Consolidation conclusions **[AUDIT 27-Sep]**: backend core on production `main` 
 - Do not commit the `sanmar-s.png` deletion or `.gp-verify-output/`.
 - Do not redesign stable SAF, Inventory, payment, archive, R2, verification, approval, ERP, Money Receipt or cancellation behavior while working on AF.
 - Do not build a third DS-v2 R1 lineage.
+- Do not amend, squash, rebase or merge the tested Day 1 history (`cd11282`) without an explicit decision.
+- Do not re-port `3ea9264`, `7447040`, `290fb5f` or the `af225f6` DP panel into the Day 1 line outside their dependency gates.
 - Do not treat preservation as approval to merge.
 
 ## 11. V1 / Phase 1 scope
 
-Governed by the approved 3-day V1 completion strategy **[USER 10-11]** (text not stored in the repo). The module list and statuses in §5 define what Phase 1 consolidates. Backend core needs no action; frontend DS-v2 R1 and SAF Edit reconciliation are the main consolidation work; AF stays preview-only.
+Governed by the approved 3-day V1 completion strategy **[USER 10-11]** (text not stored in the repo). The module list and statuses in §5 define what Phase 1 consolidates. Backend core needs no action; the frontend SAF Edit and DS-v2 R1 consolidation is **done on the Day 1 branch (unmerged)**; AF stays preview-only.
 
 ## 12. Phase 2 deferred scope
 
@@ -198,6 +244,7 @@ Governed by the approved 3-day V1 completion strategy **[USER 10-11]** (text not
 
 ## 13. Exact continuation checkpoint
 
-- Phase 0 and 0B preservation: complete (§4), including all older backend clone branches. No known unique local work remains outside a live remote ref.
-- This file: updated, uncommitted (`cowork-af\00-CONTEXT` is untracked in the outer repo `D:\AIWorkspace`).
-- Next: owner review and explicit Day 1 clearance. Then: choose the SAF Edit canonical implementation, reconcile the two DS-v2 R1 lineages, and cut Day 1 work from a clean branch off remote `main`. Never cut from a stale local `main`.
+- Phase 0 / 0B preservation: complete (§4). **Day 1: ENGINEERING PASS** at `cd11282b5ba4d2b6e9b22241fcff993086293d17`, preserved at `preservation/v1-day1-saf-consolidation-cd11282` (§2A).
+- **Day 2 has not started.** Pending acceptance before V1 can be called production-ready: R1 visual sign-off, and real-backend role/flow QA.
+- Next dependency gates (separate approvals): backend `044069a` + frontend `290fb5f` (Money Receipt authority); AF backend availability for `7447040`; backend `dp-escalation` route for the DP panel.
+- Nothing from Day 1 is merged to `main`, deployed, or in a PR. Never cut new work from a stale local `main`; the Day 1 branch is the V1 frontend line.
