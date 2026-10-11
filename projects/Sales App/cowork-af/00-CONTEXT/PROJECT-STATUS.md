@@ -1,6 +1,6 @@
 # PROJECT STATUS — SANMAR SALES APP (canonical continuation entry point)
 
-Created 2026-10-11, revised 2026-10-11 (Day 2 closeout). **Day 1: ENGINEERING PASS** (§2A). **Day 2: PASS** — Money Receipt authority aligned across backend and frontend (§2B). Day 3 has not started.
+Created 2026-10-11, revised 2026-10-11 (Day 3 closeout). **Day 1: ENGINEERING PASS** (§2A). **Day 2: PASS** (§2B). **Day 3: V1 RELEASE-CANDIDATE PASS — NOT YET PRODUCTION DEPLOYED** (§2C).
 
 ## 0. Reading rules
 
@@ -117,12 +117,61 @@ Day 1 tested history must not be amended, squashed, rebased or merged without an
 
 **Still pending (blockers to calling V1 production-ready):** R1 visual sign-off; real-backend role/flow QA (all browser QA so far used a mocked API). Day 2 added no browser QA.
 
+## 2C. Day 3 checkpoint — V1 RELEASE-CANDIDATE (NOT YET PRODUCTION DEPLOYED)
+
+**Classification: V1 RELEASE-CANDIDATE — NOT YET PRODUCTION DEPLOYED.** Nothing is merged to `main`, deployed, or in a PR. The two RC heads must ship **together** (the frontend assumes the Day 2 Money Receipt backend authority).
+
+| Item | Value |
+|---|---|
+| **Backend RC** | `v1/day3-rc-backend` @ `7d5b22a0c0c21d49353640232f1d4fbed0e80654` (worktree `cowork-af\backend-v1-day3`) = production `eb9e481` + `044069a` + Day 2 tests + one test-only guard commit. **No production-code change after Day 2; no schema or migration.** |
+| Backend RC preservation | `preservation/v1-rc-backend-7d5b22a` → `7d5b22a0c0c21d49353640232f1d4fbed0e80654` (live remote verified) |
+| **Frontend RC** | `v1/day3-rc-frontend` @ `48c6c4fa630a44c78027b59329c68c83c507883c` (worktree `cowork-af\frontend-v1-day3`) = Day 2 `1eba47f` + two Day 3 fix commits (`1da21d2`, `48c6c4f`) |
+| Frontend RC preservation | `preservation/v1-rc-frontend-48c6c4f` → `48c6c4fa630a44c78027b59329c68c83c507883c` (live remote verified). Vercel preview `dpl_J35e5KySPLiVFx82LrY2mseSpd3P`: **READY** (record only). No Vercel deployment for the backend; no Railway deployment observed for the pushes (the Railway project hosting the Sales backend was not identified, so this is not exhaustive). |
+
+**Day 3A — PostgreSQL-backed evidence** (fresh disposable PostgreSQL **17.10** on loopback ports 55433/55436; the existing 55432 service was **not** used):
+
+| non-DB tests | DB-backed tests | total executed | skipped / todo | failures |
+|---|---|---|---|---|
+| 386 passed (18 suites) | 46 passed: SAF 4 · project-content 16 · inventory-phase2 16 · admin-audit 10 | 432 | 4 placeholders (the DB suites when the DB flag is off) + 1 todo | 0 |
+
+`tsc --noEmit` clean · `nest build` pass · `prisma validate` valid. The earlier "386 = full suite" wording is retired: 386 is the **non-DB suite**.
+Test-infrastructure change: the SAF integration guard (pinned to `127.0.0.1:55432`) now also accepts `127.0.0.1:55433/sanmar_saf_test`; loopback and database name restrictions are unchanged.
+**Migration chain NOT validated:** `prisma migrate deploy` into an empty PostgreSQL 17.10 database fails at `20260816000000_add_project_onboarding_fields` (P3018, `type "ProjectType" does not exist`) after 14 migrations apply. This is the known pre-existing defect and was not repaired. As in CI, the test schema was materialised with `prisma migrate diff --from-empty`, so these runs validate the **schema and behaviour**, not the migration history.
+
+**Day 3B — real frontend ↔ real backend QA** (no mocked `fetch`; real V1 backend on the disposable database; test-only accounts for SS, TL, GL, HOD, BPC, GMC, Director Sales, CSD, ADMIN):
+
+- API workflow suite **123/123**: create requires `project_id` + `unit_id`; edit role protection and save→reload round trip with no field loss; flexible schedule (timeline, count, monthly amount); verification ≥20-character promo rule; final decision (first valid wins, concurrent GMC vs Director gives exactly one winner, Defer stays Verified, Director can decide after a Defer); Cancel / No Sale / Return role+state behaviour; document archive reads and team scoping; executed uploads role-gated; Money Receipt authority (customer signing creates no receipt; SS and ADMIN rejected; CSD issues in exactly SUBMITTED / VERIFIED / APPROVED; ERP_UPLOADED and other states rejected; existing receipt readable; handover and manage aligned).
+- Real-UI flows driven through the browser: genuine login form; Inventory → Unit → create SAF (`POST /sales/forms` → 201 with `project_id` + `unit_id`); S18 fill, flexible schedule (10 instalments, remainder 0), save and hard reload with every field intact; Verification (`/verify`), Director Sales Final Decision (`/final-decision` → APPROVED, decider role and designation recorded); CSD generate-number and issue (real UI); per-role receipt panels (CSD: generate + issue; SS/TL: request only; ADMIN: none; none in DRAFT / RETURNED / CANCELLED / NO_SALE). No `dp-escalation` request was made.
+- **Environment limits (be honest):** no Redis was installed, so a minimal in-house Redis stub supplied receipt-number `INCR` — **BullMQ queues, notification delivery and the DP-deadline processor were NOT exercised**; **R2 storage was not configured** (executed-upload requests reach the handler and are role-gated, but no file was stored or retrieved); only one team was seeded (documents are team-scoped; out-of-team 403 and in-team 200 were both checked).
+
+**Day 3C — visual acceptance:** rendered screenshots reviewed plus a programmatic layout audit (overflow, off-screen, clipped, covered controls) of **App shell/navigation, Dashboard, Work Queue (+ record drawer, create dialog), Verification (queue + review), Final Decision (queue + review), Inventory, SAF Detail and S18 Edit at 1440px and 390px**: no horizontal overflow, clipping or overlap on any surface in the final state; R1 surfaces are visually consistent. Formal design sign-off by a human reviewer is still advisable; screenshot capture was usable but low-resolution and inconsistent in scale, so the automated audit carries much of the evidence. Screenshots and result files are kept as QA artifacts **outside every repository** (scratchpad `qa-artifacts-day3`, 29 screenshots + API results).
+
+**Day 3 fixes (found only by real-backend and rendered review; each has a regression test):**
+
+1. Account chip showed "Designation not set" for every user: `/auth/login` returns no `position`. The shell now reads it from `/auth/me`, resets per user, and falls back quietly. (Mock QA had hid this.)
+2. Mobile drawer: the fixed toggle/close button covered the brand mark; the brand is offset in the open drawer.
+3. Work Queue record drawer was a fixed 520px panel, so on a 390px phone its left 130px was off-screen; now `min(520px, 100vw)` (desktop unchanged).
+4. Inventory project rows clipped the tier badge, availability count and "Open project →" on phones (fixed pixel offsets up to 597px in a 326px card); the offsets moved to a stylesheet (desktop identical, stacked layout below 640px).
+
+**Final frontend gate:** `tsc -b` clean · build pass · oxlint **0 warnings** · **232/232** tests (221 at Day 2 + 11) including SAF parity, route/role contract, Money Receipt cross-repo authority and the no-preview-code gate. Confirmed absent: `previewApiProxy`, a donor `vercel.json` (identical to `main`), any DP-escalation request/code, any AF-completion capability, any Lead Management / Sales Presentation change.
+
+**Day 2 Money Receipt alignment: RETAINED** (backend `044069a`, frontend authority; 11/11 contract rows still MATCH, re-proven end to end by the real-backend suite).
+**R1 status:** R1 is the canonical skin for Dashboard, Work Queue, Verification, Final Decision and Inventory; it is part of the RC and visually reviewed at both widths.
+
+**Observations (not fixed, not blockers):** (a) the receipt number reserved by "Generate number" (Redis sequence) can differ from the number on the issued receipt (computed from a database count and written back to the form) — same code on production `eb9e481`; (b) the R0 shell's decorative glow overflows by 190px under `overflow: hidden`, so a programmatic scroll can shift the shell sideways (no effect in normal use; same CSS as `main`); (c) a few text-link buttons are under 24px tall on phones ("View all", "Work Queue" back, "Open project" before the fix); (d) team-scoped document access means TL/GL/HOD cannot open documents of SAFs created outside their team (by design).
+
+**Still outside the V1 release candidate (not completed merely because the core RC passed):** AF backend recovery and its migrations · `7447040` (AF completion checkbox, needs the AF backend) · the DP-escalation panel and `/dp-escalation` route · Lead Management · Sales Presentation (**PHASE 2 / DEFERRED**).
+
+**Before production (not done):** merge/PR path and CI on the PRs (the CI `db-integration` job on a clean runner); deploy the two RC heads together, backend first, with production DB checks (migration status/backup — the migration chain cannot be replayed from empty); a staging smoke with **real Redis and R2** (queues, notifications, DP-deadline processor, document upload/retrieval); human visual/design sign-off; secrets and environment review.
+
 ## 3. Working repositories and worktrees
 
 | Role | Path | Branch @ HEAD | State **[VERIFIED 10-11]** |
 |---|---|---|---|
 | Backend (active AF) | `authority-h10\sanmar-sales-backend` | `recovery/application-form-foundation-v1` @ `2f955e4` | Clean. `.gp-verify-output/` untracked by design. |
 | Frontend (AF line) | `authority-h10\sanmar-sales-frontend` | `work/application-form` @ `0d03811a54138c1ee9364e5e0423ce933e53d25b` | Uncommitted `D public/sanmar-s.png` (unresolved, do not commit or restore without a decision). |
+| **Backend (Day 3 RC)** | `cowork-af\backend-v1-day3` | `v1/day3-rc-backend` @ `7d5b22a0c0c21d49353640232f1d4fbed0e80654` | Clean. `node_modules` is a junction to `backend-v1\node_modules`. Head of the V1 backend line. |
+| **Frontend (Day 3 RC)** | `cowork-af\frontend-v1-day3` | `v1/day3-rc-frontend` @ `48c6c4fa630a44c78027b59329c68c83c507883c` | Clean. `node_modules` junction to `frontend\node_modules`. Head of the V1 frontend line. |
 | **Backend (Day 2 V1 line)** | `cowork-af\backend-v1` | `v1/day2-money-receipt-backend` @ `bec4dbdaa8adb434f105ffb2366b49dd7590a28a` | Clean. Own `node_modules` (isolated `npm ci`; the recovery checkout's Prisma client was not touched). |
 | **Frontend (Day 2 V1 line)** | `cowork-af\frontend-v1-day2` | `v1/day2-money-receipt-frontend` @ `1eba47fbc865a6200c268337273db82ead7e51e4` | Clean. `node_modules` is a junction to `frontend\node_modules`. Supersedes Day 1 as the head of the V1 frontend line. |
 | **Frontend (Day 1 consolidated)** | `cowork-af\frontend-v1` | `v1/day1-saf-consolidation` @ `cd11282b5ba4d2b6e9b22241fcff993086293d17` | Clean. Local branch, preserved remotely (§2A). `node_modules` is a junction to `frontend\node_modules`. |
@@ -150,6 +199,8 @@ All pushes were new branches. No merge, force, PR, checkout, or stash applied.
 | **Day 1 consolidated frontend** | `cd11282b5ba4d2b6e9b22241fcff993086293d17` | `preservation/v1-day1-saf-consolidation-cd11282` | pushed, live remote verified |
 | **Day 2 backend (Money Receipt authority)** | `bec4dbdaa8adb434f105ffb2366b49dd7590a28a` | `preservation/v1-day2-money-receipt-backend-bec4dbd` | pushed, live remote verified |
 | **Day 2 frontend (Money Receipt authority)** | `1eba47fbc865a6200c268337273db82ead7e51e4` | `preservation/v1-day2-money-receipt-frontend-1eba47f` | pushed, live remote verified |
+| **Day 3 backend RC** | `7d5b22a0c0c21d49353640232f1d4fbed0e80654` | `preservation/v1-rc-backend-7d5b22a` | pushed, live remote verified |
+| **Day 3 frontend RC** | `48c6c4fa630a44c78027b59329c68c83c507883c` | `preservation/v1-rc-frontend-48c6c4f` | pushed, live remote verified |
 | Backend `work/application-form` | `64a80eee9ac35fd5cffd37787beb592931eb2048` | `work/application-form` | already on remote **[USER 10-11]** and seen in `ls-remote`. |
 | **Phase 0B** detached `cowork-af/frontend` | `3ea9264cad7593825714798dd051187d8a1d92a6` | `preservation/frontend-saf-functional-parity-3ea9264` | pushed (not on any live remote ref before) |
 | **Phase 0B** `feature/block-b1-booking-approval-overview` | `c016f0756b1d3dcaa2240ec80c2424d0c1cdd7e3` | none needed | already in remote `main` |
@@ -272,6 +323,8 @@ Consolidation conclusions **[AUDIT 27-Sep]**: backend core on production `main` 
 - Do not re-port `3ea9264`, `7447040` or the `af225f6` DP panel into the V1 lines outside their dependency gates. (`290fb5f` / `044069a` are done in Day 2.)
 - Do not amend, squash, rebase or merge the tested Day 2 commits (`bec4dbd`, `1eba47f`) without an explicit decision.
 - Do not ship the Day 2 frontend without the Day 2 backend (and vice versa): they are one authority change.
+- Do not amend, squash, rebase or merge the tested Day 3 RC commits (`7d5b22a`, `48c6c4f`) without an explicit decision; do not deploy them without the "before production" list in §2C.
+- Never point integration tests at the existing `127.0.0.1:55432` service; use a disposable cluster.
 - Do not treat preservation as approval to merge.
 
 ## 11. V1 / Phase 1 scope
@@ -285,8 +338,7 @@ Governed by the approved 3-day V1 completion strategy **[USER 10-11]** (text not
 
 ## 13. Exact continuation checkpoint
 
-- Phase 0 / 0B preservation: complete (§4). **Day 1: ENGINEERING PASS** (§2A). **Day 2: PASS** (§2B).
-- V1 heads: frontend `v1/day2-money-receipt-frontend` @ `1eba47fbc865a6200c268337273db82ead7e51e4`; backend `v1/day2-money-receipt-backend` @ `bec4dbdaa8adb434f105ffb2366b49dd7590a28a`. Both preserved on the remotes; nothing merged to `main`, deployed, or in a PR.
-- **Day 3 has not started.** Legacy `SafFormEditPage.tsx` stays unrouted through Day 3.
-- Pending before V1 can be called production-ready: R1 visual sign-off; real-backend role/flow QA; CI run of the 4 DB-backed backend integration specs.
-- Still held: `7447040` (AF backend), DP-escalation panel, AF backend recovery. Phase 2: Lead Management, Sales Presentation.
+- Phase 0 / 0B preservation complete (§4). **Day 1: ENGINEERING PASS** (§2A). **Day 2: PASS** (§2B). **Day 3: V1 RELEASE-CANDIDATE PASS — NOT YET PRODUCTION DEPLOYED** (§2C).
+- RC heads: frontend `v1/day3-rc-frontend` @ `48c6c4fa630a44c78027b59329c68c83c507883c`; backend `v1/day3-rc-backend` @ `7d5b22a0c0c21d49353640232f1d4fbed0e80654`. Both preserved on the remotes; nothing merged to `main`, deployed, or in a PR.
+- Next: the owner decides the merge/PR and release path, then the "before production" list in §2C (CI on PRs, real Redis + R2 staging smoke, human visual sign-off, production DB checks, backend-first deploy of both heads together).
+- Still held / outside the RC: `7447040`, DP-escalation panel, AF backend recovery and migrations. Phase 2: Lead Management, Sales Presentation. Legacy `SafFormEditPage.tsx` stays unrouted through Day 3.
