@@ -1,6 +1,6 @@
 # PROJECT STATUS — SANMAR SALES APP (canonical continuation entry point)
 
-Created 2026-10-11, revised 2026-10-11 (Day 1 closeout). **Day 1: ENGINEERING PASS** (see §2A). Day 2 has not started.
+Created 2026-10-11, revised 2026-10-11 (Day 2 closeout). **Day 1: ENGINEERING PASS** (§2A). **Day 2: PASS** — Money Receipt authority aligned across backend and frontend (§2B). Day 3 has not started.
 
 ## 0. Reading rules
 
@@ -70,7 +70,7 @@ Stale local `main` refs (frontend clone `51e5dc3`, old backend clone `42cee9d`).
 
 | Item | Held because |
 |---|---|
-| Backend `044069af2227ea0910b020b8ce7f32a68a91c6bb` **+** frontend `290fb5f` | **Next V1 Money Receipt authority dependency.** Production still lets SS/CSD/ADMIN issue receipts and creates a provisional receipt on customer signing. The pair lands together; a test blocks `290fb5f` from landing alone. |
+| ~~Backend `044069a` + frontend `290fb5f`~~ | **Resolved in Day 2 (§2B).** Both are now incorporated into the V1 branches (unmerged). |
 | `7447040` (AF Completion checkbox in User Management) | Held for AF backend availability. `can_complete_application_forms` is not in production `UpdateUserDto`; production runs `forbidNonWhitelisted`, so every user edit would return 400. |
 | DP-escalation panel (`af225f6`) | Held. Production has no `GET /:id/dp-escalation`; DP escalation is intentionally inactive. |
 | Lead Management · Sales Presentation | **PHASE 2 / DEFERRED — DO NOT TOUCH DURING V1 CONSOLIDATION.** |
@@ -82,13 +82,50 @@ Stale local `main` refs (frontend clone `51e5dc3`, old backend clone `42cee9d`).
 
 Day 1 tested history must not be amended, squashed, rebased or merged without an explicit decision.
 
+## 2B. Day 2 checkpoint — Money Receipt authority: PASS
+
+**Day 2: PASS.** The backend and frontend Money Receipt authority are aligned as one cross-repo change. Everything is on local V1 branches, preserved remotely, **not merged, not deployed, no PR**. V1 is still **not production-ready** (acceptance items in §2A remain pending).
+
+| Item | Value |
+|---|---|
+| Backend branch | `v1/day2-money-receipt-backend` @ `bec4dbdaa8adb434f105ffb2366b49dd7590a28a` (worktree `cowork-af\backend-v1`, from production `eb9e48163fb8256bae6fa543b67c9eeeac625aef`) |
+| Backend commits | `7cb89d7` = `044069a` cherry-picked cleanly (`-x`); `bec4dbd` = extra read-compatibility tests. **No schema, no migration.** |
+| Backend preservation | `preservation/v1-day2-money-receipt-backend-bec4dbd` → `bec4dbdaa8adb434f105ffb2366b49dd7590a28a` (live remote verified) |
+| Frontend branch | `v1/day2-money-receipt-frontend` @ `1eba47fbc865a6200c268337273db82ead7e51e4` (worktree `cowork-af\frontend-v1-day2`, from Day 1 `cd11282`) |
+| Frontend commit | `1eba47f` — `290fb5f`'s approved behaviour ported **surgically** (a plain cherry-pick conflicts with the Day 1 contract/Detail restructuring) |
+| Frontend preservation | `preservation/v1-day2-money-receipt-frontend-1eba47f` → `1eba47fbc865a6200c268337273db82ead7e51e4` (live remote verified). Vercel preview `dpl_9GE8aBCPptyfCdB4JQVaM3acq2DR`: **READY** (record only; preservation branch, not a deployment candidate). |
+
+**Incorporated:** `044069a` is now in the V1 consolidated backend; `290fb5f`'s authority behaviour is now in the V1 consolidated frontend. Neither is on `main`.
+
+**Authority contract now enforced (backend) and presented (frontend)**
+
+- Customer signing records the signature only: no Money Receipt, no receipt number.
+- Issue Receipt = CSD only. Generate Receipt Number = CSD only. ADMIN and Sales roles lose server-side issuance.
+- New receipt actions only from `SUBMITTED` / `VERIFIED` / `APPROVED`; `ERP_UPLOADED` and `CSD_HANDOVER` removed.
+- Unchanged: request-receipt (SS, TL, GL, HOD); send-to-CSD / signed copy (SS, CSD, ADMIN); CSD handover (SS, HOD, CSD, ADMIN, SALES_ADMIN at `ERP_UPLOADED`). Existing receipts stay readable in every status; a second issue is rejected.
+- Cross-repo matrix: **11/11 rows MATCH** (creation trigger, issue roles, number roles, allowed states ×3, request roles, manage, handover, signing, `ERP_UPLOADED`).
+
+**Verification**
+
+| Repo | Result |
+|---|---|
+| Backend | Targeted Money Receipt spec **57/57** · full suite **18 suites, 386 passed, 1 todo, 0 failed** · `tsc --noEmit` clean · `nest build` pass · `prisma validate` valid. |
+| Backend caveat | **4 DB-backed integration specs were excluded** (`*.integration.spec.ts`: admin-audit, inventory-phase2, project-content, saf.service). They connect to PostgreSQL at `127.0.0.1:55432`; no database was accessed. They are **not re-run** for this change (CI runs them on an ephemeral `postgres:17`). |
+| Frontend | `tsc -b` clean · build pass · oxlint 0 warnings · **221/221** tests (Day 1: 206; +15 Money Receipt). Includes the Day 1 SAF parity/contract tests and the new cross-repo gate, which is itself proven by feeding it broken frontends (ADMIN or SS allowed, `ERP_UPLOADED` exposed, status-list issue panel, receipt assumed at signing). |
+
+**Still held (unchanged):** `7447040` (AF backend dependency) · DP-escalation panel · AF backend recovery and migrations · **Lead Management / Sales Presentation: PHASE 2 / DEFERRED**.
+
+**Still pending (blockers to calling V1 production-ready):** R1 visual sign-off; real-backend role/flow QA (all browser QA so far used a mocked API). Day 2 added no browser QA.
+
 ## 3. Working repositories and worktrees
 
 | Role | Path | Branch @ HEAD | State **[VERIFIED 10-11]** |
 |---|---|---|---|
 | Backend (active AF) | `authority-h10\sanmar-sales-backend` | `recovery/application-form-foundation-v1` @ `2f955e4` | Clean. `.gp-verify-output/` untracked by design. |
 | Frontend (AF line) | `authority-h10\sanmar-sales-frontend` | `work/application-form` @ `0d03811a54138c1ee9364e5e0423ce933e53d25b` | Uncommitted `D public/sanmar-s.png` (unresolved, do not commit or restore without a decision). |
-| **Frontend (Day 1 consolidated, canonical V1 line)** | `cowork-af\frontend-v1` | `v1/day1-saf-consolidation` @ `cd11282b5ba4d2b6e9b22241fcff993086293d17` | Clean. Local branch, preserved remotely (§2A). `node_modules` is a junction to `frontend\node_modules`. |
+| **Backend (Day 2 V1 line)** | `cowork-af\backend-v1` | `v1/day2-money-receipt-backend` @ `bec4dbdaa8adb434f105ffb2366b49dd7590a28a` | Clean. Own `node_modules` (isolated `npm ci`; the recovery checkout's Prisma client was not touched). |
+| **Frontend (Day 2 V1 line)** | `cowork-af\frontend-v1-day2` | `v1/day2-money-receipt-frontend` @ `1eba47fbc865a6200c268337273db82ead7e51e4` | Clean. `node_modules` is a junction to `frontend\node_modules`. Supersedes Day 1 as the head of the V1 frontend line. |
+| **Frontend (Day 1 consolidated)** | `cowork-af\frontend-v1` | `v1/day1-saf-consolidation` @ `cd11282b5ba4d2b6e9b22241fcff993086293d17` | Clean. Local branch, preserved remotely (§2A). `node_modules` is a junction to `frontend\node_modules`. |
 | Frontend (previous working checkout) | `frontend\` | `feature/saf-inventory-transaction-foundation-v2` @ `af225f6` | Clean. 2 stashes (§4). `cowork-af/CLAUDE.md` marks it "do not touch"; Phase 0/0B only created branches. |
 | Frontend (DS-v2 preview, separate clone) | `cowork-af\frontend-dsv2-preview` | `feature/dsv2-r1-operational-ui` @ `8d0d493` | Clean. |
 | cowork-af frontend worktree | `cowork-af\frontend` | detached @ `3ea9264` | Preserved in Phase 0B (§4). |
@@ -111,6 +148,8 @@ All pushes were new branches. No merge, force, PR, checkout, or stash applied.
 | `stash@{1}` temp responsive validation work | `7d84fc6a1bd0895002e1fb93fec543d211a67005` | `preservation/stash-responsive-validation-7d84fc6` | pushed. Stash still present, not applied. |
 | AF recovery checkpoint (backend) | `2f955e4913a4ebfe9b6ec726d30f86e712f4cebd` | `preservation/af-recovery-20261011` | pushed |
 | **Day 1 consolidated frontend** | `cd11282b5ba4d2b6e9b22241fcff993086293d17` | `preservation/v1-day1-saf-consolidation-cd11282` | pushed, live remote verified |
+| **Day 2 backend (Money Receipt authority)** | `bec4dbdaa8adb434f105ffb2366b49dd7590a28a` | `preservation/v1-day2-money-receipt-backend-bec4dbd` | pushed, live remote verified |
+| **Day 2 frontend (Money Receipt authority)** | `1eba47fbc865a6200c268337273db82ead7e51e4` | `preservation/v1-day2-money-receipt-frontend-1eba47f` | pushed, live remote verified |
 | Backend `work/application-form` | `64a80eee9ac35fd5cffd37787beb592931eb2048` | `work/application-form` | already on remote **[USER 10-11]** and seen in `ls-remote`. |
 | **Phase 0B** detached `cowork-af/frontend` | `3ea9264cad7593825714798dd051187d8a1d92a6` | `preservation/frontend-saf-functional-parity-3ea9264` | pushed (not on any live remote ref before) |
 | **Phase 0B** `feature/block-b1-booking-approval-overview` | `c016f0756b1d3dcaa2240ec80c2424d0c1cdd7e3` | none needed | already in remote `main` |
@@ -158,7 +197,7 @@ All rows below are **[AUDIT 27-Sep] — not re-tested today** unless marked othe
 | SAF Detail | PARTIAL | A materially more advanced dormant candidate exists on `feature/saf-functional-parity-v1` (see `preservation/frontend-saf-functional-parity-3ea9264` for the cowork-af baseline commit `3ea9264`). |
 | **SAF Edit** | **IMPLEMENTED / UNMERGED (Day 1)** — was PARTIAL / FRAGMENTED | **S18 is canonical and routed on the Day 1 branch.** Legacy editor unrouted through Day 3. Not on `main`. |
 | SAF print / customer document | PARTIAL | Base on main; enhanced dormant variant `IMPLEMENTED / UNMERGED`. |
-| Provisional Money Receipt | COMPLETE ON MAIN | Base only. Additional unmerged work exists elsewhere (e.g. `c0dc770` on `work/application-form`). |
+| Provisional Money Receipt | COMPLETE ON MAIN (base) → **IMPLEMENTED / UNMERGED (Day 2)** | CSD-only authority on the Day 2 frontend branch, matching the Day 2 backend (§2B). `290fb5f` incorporated; `c0dc770` on `work/application-form` is separate and not ported. |
 | Inventory | PARTIAL → **IMPLEMENTED / UNMERGED (Day 1)** | R1 is the canonical skin; `7af8113` is reference-only. |
 | Project Detail / Unit Detail | COMPLETE ON MAIN | Delta against the DS-v2 branch not fully reconciled. |
 | UnitType / Floor Navigator / Unit Matrix / Present Unit | COMPLETE ON MAIN | DS-v2 skin not done. |
@@ -175,7 +214,7 @@ All rows below are **[AUDIT 27-Sep] — not re-tested today** unless marked othe
 | Inventory · UnitType | COMPLETE ON MAIN | |
 | Project content / media | COMPLETE ON MAIN | One historical post-merge-fix landing was unverified at audit time. |
 | SAF core · SAF final approval / GMC · SAF document generation | COMPLETE ON MAIN | |
-| Money Receipt | COMPLETE ON MAIN (base) | CSD-authority correction (`044069a`) was unmerged at audit time; it sits in the AF recovery lineage. `IMPLEMENTED / UNMERGED`. |
+| Money Receipt | COMPLETE ON MAIN (base) → **IMPLEMENTED / UNMERGED (Day 2)** | `044069a` incorporated into `v1/day2-money-receipt-backend` (clean cherry-pick onto production `eb9e481`, no migration). Not on `main`; not deployed. |
 | DP clearance · Administrative audit · Health/ops | COMPLETE ON MAIN | Health on hardened main. |
 | DP escalation | IMPLEMENTED / UNMERGED + BLOCKED BY DECISION | Intentionally inactive until `DP_ESCALATION_EFFECTIVE_FROM` is supplied. |
 | AF governance, eligibility, transaction engine, PDF, revision-finalization | IMPLEMENTED / UNMERGED | Recovery lineage is the most advanced. **Not production-ready.** See §6. |
@@ -230,7 +269,9 @@ Consolidation conclusions **[AUDIT 27-Sep]**: backend core on production `main` 
 - Do not redesign stable SAF, Inventory, payment, archive, R2, verification, approval, ERP, Money Receipt or cancellation behavior while working on AF.
 - Do not build a third DS-v2 R1 lineage.
 - Do not amend, squash, rebase or merge the tested Day 1 history (`cd11282`) without an explicit decision.
-- Do not re-port `3ea9264`, `7447040`, `290fb5f` or the `af225f6` DP panel into the Day 1 line outside their dependency gates.
+- Do not re-port `3ea9264`, `7447040` or the `af225f6` DP panel into the V1 lines outside their dependency gates. (`290fb5f` / `044069a` are done in Day 2.)
+- Do not amend, squash, rebase or merge the tested Day 2 commits (`bec4dbd`, `1eba47f`) without an explicit decision.
+- Do not ship the Day 2 frontend without the Day 2 backend (and vice versa): they are one authority change.
 - Do not treat preservation as approval to merge.
 
 ## 11. V1 / Phase 1 scope
@@ -244,7 +285,8 @@ Governed by the approved 3-day V1 completion strategy **[USER 10-11]** (text not
 
 ## 13. Exact continuation checkpoint
 
-- Phase 0 / 0B preservation: complete (§4). **Day 1: ENGINEERING PASS** at `cd11282b5ba4d2b6e9b22241fcff993086293d17`, preserved at `preservation/v1-day1-saf-consolidation-cd11282` (§2A).
-- **Day 2 has not started.** Pending acceptance before V1 can be called production-ready: R1 visual sign-off, and real-backend role/flow QA.
-- Next dependency gates (separate approvals): backend `044069a` + frontend `290fb5f` (Money Receipt authority); AF backend availability for `7447040`; backend `dp-escalation` route for the DP panel.
-- Nothing from Day 1 is merged to `main`, deployed, or in a PR. Never cut new work from a stale local `main`; the Day 1 branch is the V1 frontend line.
+- Phase 0 / 0B preservation: complete (§4). **Day 1: ENGINEERING PASS** (§2A). **Day 2: PASS** (§2B).
+- V1 heads: frontend `v1/day2-money-receipt-frontend` @ `1eba47fbc865a6200c268337273db82ead7e51e4`; backend `v1/day2-money-receipt-backend` @ `bec4dbdaa8adb434f105ffb2366b49dd7590a28a`. Both preserved on the remotes; nothing merged to `main`, deployed, or in a PR.
+- **Day 3 has not started.** Legacy `SafFormEditPage.tsx` stays unrouted through Day 3.
+- Pending before V1 can be called production-ready: R1 visual sign-off; real-backend role/flow QA; CI run of the 4 DB-backed backend integration specs.
+- Still held: `7447040` (AF backend), DP-escalation panel, AF backend recovery. Phase 2: Lead Management, Sales Presentation.
